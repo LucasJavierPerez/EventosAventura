@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chacay 33K en 3D</title>
+<meta name="description" content="Recorrido de la Chacay 33K sobre una maqueta 3D del relieve real.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-top: #eef0e6;
+    --bg-bottom: #c9cfb8;
+    --ink: #24271f;
+    --ink-soft: #5b6150;
+    --panel: rgba(250, 251, 245, .86);
+    --panel-border: rgba(36, 39, 31, .1);
+    --accent: #d6402b;
+    --accent-dark: #6a0c06;
+    --track: #b6bba5;
+  }
+  body.night {
+    --bg-top: #121726;
+    --bg-bottom: #1f2a3a;
+    --ink: #e8ecf3;
+    --ink-soft: #9aa6b8;
+    --panel: rgba(20, 26, 40, .82);
+    --panel-border: rgba(232, 236, 243, .12);
+    --track: #3a465a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: "Outfit", system-ui, sans-serif;
+    color: var(--ink);
+    background: linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+    background-attachment: fixed;
+    overflow: hidden;
+    transition: color .6s;
+  }
+  #bgNight {
+    position: fixed; inset: 0; pointer-events: none; opacity: 0;
+    background: linear-gradient(180deg, #0d1220, #1d2838);
+    transition: opacity .9s;
+  }
+  body.night #bgNight { opacity: 1; }
+  #scene { position: fixed; inset: 0; }
+  #scene canvas { display: block; touch-action: none; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 16px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.08);
+    transition: background .6s, border-color .6s;
+  }
+
+  header {
+    position: fixed; top: 16px; left: 16px; z-index: 5;
+    padding: 14px 18px; max-width: min(420px, calc(100vw - 32px));
+  }
+  header .kicker { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  header h1 { margin: 2px 0 4px; font-size: 26px; line-height: 1.1; font-weight: 700; }
+  header p { margin: 0; color: var(--ink-soft); font-size: 14px; }
+
+  #stats {
+    position: fixed; top: 16px; right: 16px; z-index: 5;
+    padding: 12px 16px; display: grid; grid-template-columns: repeat(2, auto); gap: 8px 22px;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .label { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); }
+  .stat .value { font-size: 20px; font-weight: 600; white-space: nowrap; }
+  .stat .value small { font-size: 13px; font-weight: 500; color: var(--ink-soft); }
+
+  #controls {
+    position: fixed; left: 16px; bottom: 156px; z-index: 5;
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  }
+  button, select {
+    font: inherit; font-size: 14px; color: var(--ink);
+    background: var(--panel); border: 1px solid var(--panel-border);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-radius: 999px; padding: 9px 16px; cursor: pointer;
+    transition: background .2s, transform .1s, color .6s;
+  }
+  button:hover { transform: translateY(-1px); }
+  button.primary { background: var(--accent); color: #fff; border-color: transparent; font-weight: 600; }
+  button.toggle[aria-pressed="true"] { background: var(--ink); color: var(--bg-top); }
+
+  #profileWrap {
+    position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 5;
+    padding: 10px 14px 8px; height: 128px;
+  }
+  #profileWrap .row { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-soft); }
+  #profile { width: 100%; height: 92px; display: block; cursor: pointer; touch-action: none; }
+  #profile .area { fill: var(--track); opacity: .55; }
+  #profile .walked { fill: var(--accent); opacity: .35; }
+  #profile .line { fill: none; stroke: var(--ink-soft); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+  #profile .cursor { stroke: var(--accent-dark); stroke-width: 2; vector-effect: non-scaling-stroke; }
+  body.night #profile .cursor { stroke: #ff8a70; }
+
+  #hint {
+    position: fixed; right: 16px; bottom: 156px; z-index: 5;
+    font-size: 12px; color: var(--ink-soft); text-align: right;
+  }
+  #hint a { color: inherit; }
+
+  .label3d {
+    position: fixed; left: 0; top: 0; z-index: 4; pointer-events: none;
+    transform: translate(-50%, calc(-100% - 8px));
+    background: var(--panel); border: 1px solid var(--panel-border);
+    padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap;
+    transition: opacity .2s;
+  }
+  .label3d.km { padding: 2px 7px; font-size: 11px; color: var(--ink-soft); }
+  .label3d.main { background: var(--accent); color: #fff; border-color: transparent; font-weight: 600; }
+
+  #loader {
+    position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
+    background: linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+    transition: opacity .6s;
+  }
+  #loader.hidden { opacity: 0; pointer-events: none; }
+  #loader .box { text-align: center; padding: 0 16px; }
+  #loader .bar { width: 220px; height: 4px; border-radius: 4px; background: var(--track); margin: 12px auto 0; overflow: hidden; }
+  #loader .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+
+  @media (max-width: 720px) {
+    header { padding: 10px 14px; right: 16px; }
+    header h1 { font-size: 20px; }
+    header p { display: none; }
+    #stats { top: auto; right: 16px; left: 16px; bottom: 196px; grid-template-columns: repeat(3, 1fr); gap: 6px 10px; padding: 10px 12px; }
+    .stat .value { font-size: 16px; }
+    .stat.optional { display: none; }
+    #controls { bottom: 148px; right: 16px; }
+    #controls button, #controls select { padding: 8px 12px; font-size: 13px; }
+    #profileWrap { height: 120px; }
+    #profile { height: 84px; }
+    #hint { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="bgNight"></div>
+<div id="scene"></div>
+
+<header class="panel">
+  <div class="kicker">Trail running · 33K</div>
+  <h1>Chacay 33K en 3D</h1>
+  <p>El recorrido completo sobre una maqueta del relieve real. Tocá «Empezar el recorrido» o arrastrá sobre el perfil.</p>
+</header>
+
+<section id="stats" class="panel" aria-live="polite">
+  <div class="stat"><div class="label">Distancia</div><div class="value"><span id="sDist">0.0</span> <small>/ <span id="sDistTot">—</span> km</small></div></div>
+  <div class="stat"><div class="label">Altitud</div><div class="value"><span id="sAlt">—</span> <small>m</small></div></div>
+  <div class="stat"><div class="label">Pendiente</div><div class="value"><span id="sSlope">0</span> <small>%</small></div></div>
+  <div class="stat"><div class="label">Desnivel +</div><div class="value"><span id="sGain">0</span> <small>/ <span id="sGainTot">—</span> m</small></div></div>
+  <div class="stat optional"><div class="label">Tiempo</div><div class="value" id="sTime">0:00:00</div></div>
+  <div class="stat optional"><div class="label">Hora</div><div class="value" id="sClock">--:--</div></div>
+</section>
+
+<div id="controls">
+  <button id="btnPlay" class="primary">▶ Empezar el recorrido</button>
+  <select id="speed" aria-label="Velocidad">
+    <option value="1">1×</option>
+    <option value="2" selected>2×</option>
+    <option value="4">4×</option>
+  </select>
+  <button id="btnFollow" class="toggle" aria-pressed="true">Seguir corredor</button>
+  <button id="btnNight" class="toggle" aria-pressed="false">☾ Noche</button>
+  <button id="btnReset">Vista general</button>
+</div>
+
+<div id="hint">Arrastrar: rotar · Rueda: zoom · Shift/clic derecho + arrastrar: mover<br>
+Relieve: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">Terrain Tiles (AWS / Mapzen)</a></div>
+
+<section id="profileWrap" class="panel">
+  <div class="row"><span>Perfil de altimetría</span><span id="profRange"></span></div>
+  <svg id="profile" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-label="Perfil de altimetría">
+    <defs><clipPath id="walkClip"><rect id="walkRect" x="0" y="0" width="0" height="100"/></clipPath></defs>
+    <path class="area" id="profArea"/>
+    <path class="walked" id="profWalked" clip-path="url(#walkClip)"/>
+    <path class="line" id="profLine"/>
+    <line class="cursor" id="profCursor" x1="0" x2="0" y1="0" y2="100"/>
+  </svg>
+</section>
+
+<div id="loader"><div class="box">
+  <div id="loaderText">Cargando el relieve…</div>
+  <div class="bar"><i id="loaderBar"></i></div>
+</div></div>
+
+<script src="track.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ---------- Settings ----------
+const WORLD_SIZE = 200;        // longest side of the terrain block, in world units
+const EXAGGERATION = 2.6;      // vertical exaggeration of real altitudes
+const PAD = 0.18;              // margin around the route bbox
+const BASE_THICKNESS = 3;      // land above the lowest point
+const BOTTOM_Y = -9;           // underside of the block
+const TRIP_SECONDS = 70;       // duration of the full trip at 1x
+
+const $ = id => document.getElementById(id);
+const loaderBar = $('loaderBar'), loaderText = $('loaderText');
+
+// ---------- Track preparation ----------
+const T = window.TRACK;
+const raw = T.pts; // [lon, lat, ele, tSeconds]
+const lat0 = raw.reduce((s, p) => s + p[1], 0) / raw.length;
+const mLat = 111320, mLon = 111320 * Math.cos(lat0 * Math.PI / 180);
+
+let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
+for (const [lo, la] of raw) {
+  minLon = Math.min(minLon, lo); maxLon = Math.max(maxLon, lo);
+  minLat = Math.min(minLat, la); maxLat = Math.max(maxLat, la);
+}
+{
+  const dLon = maxLon - minLon, dLat = maxLat - minLat;
+  minLon -= dLon * PAD; maxLon += dLon * PAD; minLat -= dLat * PAD; maxLat += dLat * PAD;
+}
+const lonC = (minLon + maxLon) / 2, latC = (minLat + maxLat) / 2;
+const spanX = (maxLon - minLon) * mLon, spanZ = (maxLat - minLat) * mLat;
+const SCALE = WORLD_SIZE / Math.max(spanX, spanZ); // world units per meter
+const toX = lon => (lon - lonC) * mLon * SCALE;
+const toZ = lat => -(lat - latC) * mLat * SCALE;   // north = -z
+
+// Cumulative distance and smoothed elevation
+const N = raw.length;
+const dist = new Float64Array(N), eleS = new Float64Array(N);
+for (let i = 1; i < N; i++) {
+  const dx = (raw[i][0] - raw[i - 1][0]) * mLon, dz = (raw[i][1] - raw[i - 1][1]) * mLat;
+  dist[i] = dist[i - 1] + Math.hypot(dx, dz);
+}
+for (let i = 0; i < N; i++) {
+  let s = 0, c = 0;
+  for (let k = Math.max(0, i - 3); k <= Math.min(N - 1, i + 3); k++) { s += raw[k][2]; c++; }
+  eleS[i] = s / c;
+}
+// Elevation gain with a 3 m hysteresis on the recorded altitude (close to what GPS watches report)
+const gain = new Float64Array(N);
+{
+  let ref = raw[0][2], acc = 0;
+  for (let i = 1; i < N; i++) {
+    const e = raw[i][2];
+    if (e - ref >= 3) { acc += e - ref; ref = e; } else if (ref - e >= 3) ref = e;
+    gain[i] = acc;
+  }
+}
+const totalDist = dist[N - 1], totalGain = gain[N - 1];
+let eMin = Infinity, eMax = -Infinity, iMax = 0;
+for (let i = 0; i < N; i++) { if (eleS[i] < eMin) eMin = eleS[i]; if (eleS[i] > eMax) { eMax = eleS[i]; iMax = i; } }
+
+$('sDistTot').textContent = (totalDist / 1000).toFixed(1);
+$('sGainTot').textContent = Math.round(totalGain);
+$('profRange').textContent = `${Math.round(eMin)} – ${Math.round(eMax)} m · ${(totalDist / 1000).toFixed(1)} km · D+ ${Math.round(totalGain)} m`;
+
+// Index lookup by distance
+function locate(d) {
+  d = Math.min(Math.max(d, 0), totalDist);
+  let lo = 0, hi = N - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (dist[m] <= d) lo = m; else hi = m; }
+  const seg = dist[hi] - dist[lo];
+  return { i: lo, f: seg > 0 ? (d - dist[lo]) / seg : 0 };
+}
+const lerpArr = (arr, i, f) => arr[i] + ((arr[Math.min(i + 1, N - 1)]) - arr[i]) * f;
+
+// ---------- Elevation tiles (Terrarium) ----------
+function lonLatToPixel(lon, lat, z) {
+  const n = 256 * 2 ** z, r = lat * Math.PI / 180;
+  return [(lon + 180) / 360 * n, (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n];
+}
+function loadImage(url) {
+  return new Promise((res, rej) => {
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    img.onload = () => res(img); img.onerror = () => rej(new Error(url)); img.src = url;
+  });
+}
+async function loadElevation() {
+  let z = 14, x0, y0, x1, y1;
+  for (; z > 9; z--) {
+    const a = lonLatToPixel(minLon, maxLat, z), b = lonLatToPixel(maxLon, minLat, z);
+    x0 = Math.floor(a[0] / 256); y0 = Math.floor(a[1] / 256); x1 = Math.floor(b[0] / 256); y1 = Math.floor(b[1] / 256);
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) <= 20) break;
+  }
+  const cols = x1 - x0 + 1, rows = y1 - y0 + 1, total = cols * rows;
+  const canvas = document.createElement('canvas');
+  canvas.width = cols * 256; canvas.height = rows * 256;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  let done = 0;
+  const jobs = [];
+  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+    jobs.push(loadImage(`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${tx}/${ty}.png`).then(img => {
+      ctx.drawImage(img, (tx - x0) * 256, (ty - y0) * 256);
+      loaderBar.style.width = `${(++done / total) * 100}%`;
+    }));
+  }
+  await Promise.all(jobs);
+  const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  const W = canvas.width, H = canvas.height;
+  const hAt = (x, y) => {
+    x = Math.min(Math.max(x, 0), W - 1); y = Math.min(Math.max(y, 0), H - 1);
+    const k = (y * W + x) * 4;
+    return px[k] * 256 + px[k + 1] + px[k + 2] / 256 - 32768;
+  };
+  return (lon, lat) => {
+    const [gx, gy] = lonLatToPixel(lon, lat, z);
+    const x = gx - x0 * 256 - .5, y = gy - y0 * 256 - .5;
+    const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy;
+    return (hAt(ix, iy) * (1 - fx) + hAt(ix + 1, iy) * fx) * (1 - fy) + (hAt(ix, iy + 1) * (1 - fx) + hAt(ix + 1, iy + 1) * fx) * fy;
+  };
+}
+
+// ---------- Scene ----------
+const container = $('scene');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 1, 3000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = .08;
+controls.maxPolarAngle = 1.38;
+controls.minDistance = 25;
+controls.maxDistance = 700;
+
+const hemi = new THREE.HemisphereLight(0xf4f1e0, 0x5d5a48, 1.1);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff1d6, 2.4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -160, right: 160, top: 160, bottom: -160, near: 10, far: 900 });
+sun.shadow.bias = -0.0005;
+sun.shadow.normalBias = 0.4;
+scene.add(sun, sun.target);
+
+function setOverview(instant) {
+  // Frame the route, nudged down so the block clears the profile panel
+  const c = routeCenter.clone().setY(-12);
+  const p = new THREE.Vector3(-0.55, 0.75, 1).normalize().multiplyScalar(WORLD_SIZE * (innerWidth < 720 ? 2.6 : 1.95)).add(c);
+  if (instant) { camera.position.copy(p); controls.target.copy(c); }
+  else { camAnim = { from: camera.position.clone(), to: p, tFrom: controls.target.clone(), tTo: c, t: 0 }; }
+}
+let camAnim = null;
+const routeCenter = new THREE.Vector3();
+
+// ---------- Build world ----------
+let groundH = null;  // world height sampler (x, z) -> y, consistent with the mesh triangulation
+let runner, ribbonAhead, ribbonWalked, routeWorld, labels = [];
+
+async function build() {
+  const elev = await loadElevation();
+  loaderText.textContent = 'Modelando la maqueta…';
+  await new Promise(r => setTimeout(r, 30));
+
+  // Height grid
+  const cell = WORLD_SIZE / 230;
+  const sx = spanX * SCALE, sz = spanZ * SCALE;
+  const NX = Math.round(sx / cell) + 1, NZ = Math.round(sz / cell) + 1;
+  const cx = sx / (NX - 1), cz = sz / (NZ - 1);
+  const hGrid = new Float32Array(NX * NZ);
+  let hMin = Infinity, hMax = -Infinity;
+  for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
+    const lon = minLon + (maxLon - minLon) * i / (NX - 1);
+    const lat = maxLat - (maxLat - minLat) * j / (NZ - 1);
+    const h = elev(lon, lat);
+    hGrid[j * NX + i] = h;
+    if (h < hMin) hMin = h; if (h > hMax) hMax = h;
+  }
+  const yOf = h => (h - hMin) * SCALE * EXAGGERATION + BASE_THICKNESS;
+  const Y = new Float32Array(NX * NZ);
+  for (let k = 0; k < Y.length; k++) Y[k] = yOf(hGrid[k]);
+  const X0 = -sx / 2, Z0 = -sz / 2;
+  const gx = i => X0 + i * cx, gz = j => Z0 + j * cz;
+  const Yg = (i, j) => Y[Math.min(Math.max(j, 0), NZ - 1) * NX + Math.min(Math.max(i, 0), NX - 1)];
+
+  groundH = (x, z) => {
+    const u = (x - X0) / cx, v = (z - Z0) / cz;
+    const i = Math.min(Math.max(Math.floor(u), 0), NX - 2), j = Math.min(Math.max(Math.floor(v), 0), NZ - 2);
+    const fx = Math.min(Math.max(u - i, 0), 1), fz = Math.min(Math.max(v - j, 0), 1);
+    const a = Yg(i, j), b = Yg(i + 1, j), c = Yg(i, j + 1), d = Yg(i + 1, j + 1);
+    // triangles: (a,b,c) when fx+fz<=1, else (d,c,b)
+    return fx + fz <= 1 ? a + (b - a) * fx + (c - a) * fz : d + (c - d) * (1 - fx) + (b - d) * (1 - fz);
+  };
+
+  // Local mean height (to detect ravines, where trees grow)
+  const blur = new Float32Array(NX * NZ), R = 6;
+  for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
+    let s = 0, c = 0;
+    for (let dj = -R; dj <= R; dj += 2) for (let di = -R; di <= R; di += 2) { s += Yg(i + di, j + dj); c++; }
+    blur[j * NX + i] = s / c;
+  }
+
+  // Terrain colours
+  const C = hex => new THREE.Color(hex);
+  const pal = {
+    low: C('#b8ad74'), mid: C('#8f9d5f'), high: C('#c6bf8e'), rock: C('#8c8273'), ravine: C('#6f8a4e')
+  };
+  const tmp = new THREE.Color();
+  function faceColor(yAvg, ny, concav, seed) {
+    const t = (yAvg - BASE_THICKNESS) / Math.max(1e-6, yOf(hMax) - BASE_THICKNESS);
+    if (t < .45) tmp.copy(pal.low).lerp(pal.mid, t / .45);
+    else tmp.copy(pal.mid).lerp(pal.high, Math.min(1, (t - .45) / .55));
+    tmp.lerp(pal.ravine, Math.min(1, Math.max(0, concav * .9)));
+    const steep = Math.min(1, Math.max(0, (0.93 - ny) / 0.16));
+    tmp.lerp(pal.rock, steep * .85);
+    const n = (Math.sin(seed * 12.9898) * 43758.5453) % 1;
+    tmp.offsetHSL(0, 0, (n - .5) * 0.035);
+    return tmp;
+  }
+
+  // Terrain mesh (flat-shaded, non indexed)
+  const triCount = (NX - 1) * (NZ - 1) * 2;
+  const pos = new Float32Array(triCount * 9), col = new Float32Array(triCount * 9);
+  let p = 0;
+  const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3(), e1 = new THREE.Vector3(), e2 = new THREE.Vector3();
+  const pushTri = (ax, ay, az, bx, by, bz, qx, qy, qz, i, j) => {
+    vA.set(ax, ay, az); vB.set(bx, by, bz); vC.set(qx, qy, qz);
+    e1.subVectors(vB, vA); e2.subVectors(vC, vA); e1.cross(e2).normalize();
+    const ny = Math.abs(e1.y), yAvg = (ay + by + qy) / 3;
+    const concav = (blur[j * NX + i] - yAvg) / 1.2;
+    const c = faceColor(yAvg, ny, concav, i * 7.31 + j * 3.17 + p);
+    for (const v of [vA, vB, vC]) {
+      pos[p] = v.x; pos[p + 1] = v.y; pos[p + 2] = v.z;
+      col[p] = c.r; col[p + 1] = c.g; col[p + 2] = c.b; p += 3;
+    }
+  };
+  for (let j = 0; j < NZ - 1; j++) for (let i = 0; i < NX - 1; i++) {
+    const x0 = gx(i), x1 = gx(i + 1), z0 = gz(j), z1 = gz(j + 1);
+    const a = Yg(i, j), b = Yg(i + 1, j), c = Yg(i, j + 1), d = Yg(i + 1, j + 1);
+    pushTri(x0, a, z0, x0, c, z1, x1, b, z0, i, j);
+    pushTri(x1, d, z1, x1, b, z0, x0, c, z1, i, j);
+  }
+  const tGeo = new THREE.BufferGeometry();
+  tGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  tGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  tGeo.computeVertexNormals();
+  const terrain = new THREE.Mesh(tGeo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  terrain.receiveShadow = true; terrain.castShadow = true;
+  scene.add(terrain);
+
+  // Side walls with soil strata
+  const wallPos = [], wallCol = [];
+  const soilTop = C('#7b5d42'), soilMid = C('#634a35'), soilBot = C('#47362a');
+  const strata = [[0, soilTop], [0.18, soilMid], [1, soilBot]];
+  const edge = [];
+  for (let i = 0; i < NX; i++) edge.push([i, 0]);
+  for (let j = 1; j < NZ; j++) edge.push([NX - 1, j]);
+  for (let i = NX - 2; i >= 0; i--) edge.push([i, NZ - 1]);
+  for (let j = NZ - 2; j >= 0; j--) edge.push([0, j]);
+  for (let k = 0; k < edge.length - 1; k++) {
+    const [i1, j1] = edge[k], [i2, j2] = edge[k + 1];
+    const xa = gx(i1), za = gz(j1), xb = gx(i2), zb = gz(j2);
+    const ya = Yg(i1, j1), yb = Yg(i2, j2);
+    for (let s = 0; s < strata.length - 1; s++) {
+      const [t0, c0] = strata[s], [t1] = strata[s + 1];
+      const yaTop = ya + (BOTTOM_Y - ya) * t0, ybTop = yb + (BOTTOM_Y - yb) * t0;
+      const yaBot = ya + (BOTTOM_Y - ya) * t1, ybBot = yb + (BOTTOM_Y - yb) * t1;
+      const quad = [xa, yaTop, za, xa, yaBot, za, xb, ybTop, zb, xb, ybTop, zb, xa, yaBot, za, xb, ybBot, zb];
+      wallPos.push(...quad);
+      for (let q = 0; q < 6; q++) wallCol.push(c0.r, c0.g, c0.b);
+    }
+  }
+  const wGeo = new THREE.BufferGeometry();
+  wGeo.setAttribute('position', new THREE.Float32BufferAttribute(wallPos, 3));
+  wGeo.setAttribute('color', new THREE.Float32BufferAttribute(wallCol, 3));
+  wGeo.computeVertexNormals();
+  const walls = new THREE.Mesh(wGeo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  walls.castShadow = true;
+  scene.add(walls);
+  const bottom = new THREE.Mesh(new THREE.PlaneGeometry(sx, sz), new THREE.MeshLambertMaterial({ color: 0x3d2f25 }));
+  bottom.rotation.x = Math.PI / 2; bottom.position.y = BOTTOM_Y;
+  scene.add(bottom);
+
+  // Soft shadow on the "table"
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), new THREE.ShadowMaterial({ opacity: .18 }));
+  floor.rotation.x = -Math.PI / 2; floor.position.y = BOTTOM_Y - .05; floor.receiveShadow = true;
+  scene.add(floor);
+
+  // Route in world coordinates (sitting on the mesh)
+  routeWorld = raw.map(([lo, la]) => { const x = toX(lo), z = toZ(la); return new THREE.Vector3(x, groundH(x, z), z); });
+  routeCenter.set((toX(minLon) + toX(maxLon)) / 2, 0, (toZ(minLat) + toZ(maxLat)) / 2);
+
+  // Mask cells near the route so trees stay off the path
+  const nearRoute = new Uint8Array(NX * NZ);
+  for (const v of routeWorld) {
+    const ci = Math.round((v.x - X0) / cx), cj = Math.round((v.z - Z0) / cz);
+    for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) {
+      const ii = ci + di, jj = cj + dj;
+      if (ii >= 0 && jj >= 0 && ii < NX && jj < NZ) nearRoute[jj * NX + ii] = 1;
+    }
+  }
+
+  // Trees (rounded crowns, like molles and espinillos) and rocks
+  let rnd = 12345; const rand = () => (rnd = (rnd * 16807) % 2147483647) / 2147483647;
+  const trees = [], rocks = [];
+  for (let n = 0; n < 26000 && trees.length < 2600; n++) {
+    const u = 2 + rand() * (NX - 5), v = 2 + rand() * (NZ - 5);
+    const i = Math.floor(u), j = Math.floor(v);
+    if (nearRoute[j * NX + i]) continue;
+    const x = X0 + u * cx, z = Z0 + v * cz, y = groundH(x, z);
+    const slope = Math.hypot(Yg(i + 1, j) - Yg(i - 1, j), Yg(i, j + 1) - Yg(i, j - 1)) / (2 * cx);
+    const concav = (blur[j * NX + i] - y);
+    const t = (y - BASE_THICKNESS) / (yOf(hMax) - BASE_THICKNESS);
+    if (slope > .9) { if (rand() < .04 && rocks.length < 500) rocks.push([x, y, z]); continue; }
+    const pTree = Math.min(1, Math.max(0, .06 + concav * .5 - t * .12));
+    if (rand() < pTree) trees.push([x, y, z]);
+    else if (slope > .55 && rand() < .02 && rocks.length < 500) rocks.push([x, y, z]);
+  }
+  const crownGeo = new THREE.IcosahedronGeometry(1, 0);
+  const trunkGeo = new THREE.CylinderGeometry(.12, .16, 1, 5);
+  trunkGeo.translate(0, .5, 0);
+  const crowns = new THREE.InstancedMesh(crownGeo, new THREE.MeshLambertMaterial({ flatShading: true }), trees.length);
+  const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshLambertMaterial({ color: 0x5a4330 }), trees.length);
+  crowns.castShadow = true; trunks.castShadow = true; crowns.receiveShadow = true;
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sv = new THREE.Vector3(), pv = new THREE.Vector3();
+  const greens = ['#4f6b37', '#5d7a3e', '#6b8445', '#45603a', '#7a8c4a'].map(C);
+  trees.forEach(([x, y, z], k) => {
+    const s = .55 + rand() * .55;
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * 6.28);
+    m4.compose(pv.set(x, y + 1.05 * s, z), q, sv.set(s * 1.05, s * .72, s * 1.05)); crowns.setMatrixAt(k, m4);
+    crowns.setColorAt(k, greens[Math.floor(rand() * greens.length)]);
+    m4.compose(pv.set(x, y - .1, z), q, sv.set(s, s * 1.1, s)); trunks.setMatrixAt(k, m4);
+  });
+  scene.add(crowns, trunks);
+  const rockMesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(.6, 0), new THREE.MeshLambertMaterial({ color: 0x9a9184, flatShading: true }), rocks.length);
+  rockMesh.castShadow = true; rockMesh.receiveShadow = true;
+  rocks.forEach(([x, y, z], k) => {
+    const s = .5 + rand() * .9;
+    q.setFromEuler(new THREE.Euler(rand() * 3, rand() * 3, rand() * 3));
+    m4.compose(pv.set(x, y + .1, z), q, sv.set(s * 1.3, s * .7, s)); rockMesh.setMatrixAt(k, m4);
+  });
+  scene.add(rockMesh);
+
+  // Route ribbon
+  const W = .55, LIFT = .22;
+  const rPos = new Float32Array(N * 6), idx = [];
+  for (let i = 0; i < N; i++) {
+    const a = routeWorld[Math.max(0, i - 1)], b = routeWorld[Math.min(N - 1, i + 1)];
+    let dx = b.x - a.x, dz = b.z - a.z; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    const v = routeWorld[i];
+    const lx = v.x - dz * W, lz = v.z + dx * W, rx = v.x + dz * W, rz = v.z - dx * W;
+    rPos.set([lx, Math.max(groundH(lx, lz), v.y) + LIFT, lz, rx, Math.max(groundH(rx, rz), v.y) + LIFT, rz], i * 6);
+    if (i < N - 1) { const k = i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+  }
+  const rGeo = new THREE.BufferGeometry();
+  rGeo.setAttribute('position', new THREE.BufferAttribute(rPos, 3));
+  rGeo.setIndex(idx);
+  const ribbonMat = color => new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+  const rGeoWalked = new THREE.BufferGeometry();
+  rGeoWalked.setAttribute('position', rGeo.getAttribute('position'));
+  rGeoWalked.setIndex(rGeo.getIndex());
+  ribbonAhead = new THREE.Mesh(rGeo, ribbonMat(0xd6402b));
+  ribbonWalked = new THREE.Mesh(rGeoWalked, ribbonMat(0x6a0c06));
+  ribbonWalked.renderOrder = 2;
+  scene.add(ribbonAhead, ribbonWalked);
+
+  // Start / finish flag
+  const start = routeWorld[0];
+  const flag = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(.1, .1, 5, 6), new THREE.MeshLambertMaterial({ color: 0xeeeeee }));
+  pole.position.y = 2.5;
+  const cloth = new THREE.Mesh(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 5, 0), new THREE.Vector3(2.4, 4.3, 0), new THREE.Vector3(0, 3.6, 0)]),
+    new THREE.MeshLambertMaterial({ color: 0xd6402b, side: THREE.DoubleSide }));
+  cloth.geometry.computeVertexNormals();
+  flag.add(pole, cloth); flag.position.copy(start); flag.traverse(o => o.castShadow = true);
+  scene.add(flag);
+
+  // Runner
+  runner = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(.42, 1.1, 4, 8), new THREE.MeshLambertMaterial({ color: 0xf2a33a }));
+  body.position.y = 1.0;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(.38, 12, 10), new THREE.MeshLambertMaterial({ color: 0xf4d2b0 }));
+  head.position.y = 2.15;
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(.4, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0xd6402b }));
+  cap.position.y = 2.22;
+  const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.45, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .8, side: THREE.DoubleSide, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = .35; ring.name = 'ring';
+  const lamp = new THREE.PointLight(0xffd59a, 0, 28, 1.6); lamp.position.y = 3; lamp.name = 'lamp';
+  runner.add(body, head, cap, ring, lamp);
+  runner.traverse(o => { if (o.isMesh && o !== ring) o.castShadow = true; });
+  runner.scale.setScalar(1.25);
+  scene.add(runner);
+
+  // Labels
+  const addLabel = (text, v, cls = '') => {
+    const el = document.createElement('div'); el.className = `label3d ${cls}`; el.textContent = text;
+    document.body.appendChild(el); labels.push({ el, v: v.clone().add(new THREE.Vector3(0, 5.5, 0)) });
+  };
+  addLabel('Largada / Llegada', start, 'main');
+  addLabel(`Punto más alto · ${Math.round(eMax)} m`, routeWorld[iMax]);
+  for (let km = 5; km * 1000 < totalDist - 1500; km += 5) {
+    const { i } = locate(km * 1000);
+    if (Math.abs(dist[i] - dist[iMax]) < 1200) continue;
+    addLabel(`km ${km}`, routeWorld[i].clone().sub(new THREE.Vector3(0, 2.5, 0)), 'km');
+  }
+
+  buildProfile();
+  setOverview(true);
+  setProgress(0);
+  setDayness(1, true);
+  $('loader').classList.add('hidden');
+}
+
+// ---------- Elevation profile ----------
+const profX = d => d / totalDist * 1000;
+const profY = e => 94 - (e - eMin) / (eMax - eMin) * 84;
+function buildProfile() {
+  let line = '';
+  const step = Math.max(1, Math.floor(N / 600));
+  for (let i = 0; i < N; i += step) line += `${i ? 'L' : 'M'}${profX(dist[i]).toFixed(1)},${profY(eleS[i]).toFixed(1)}`;
+  line += `L1000,${profY(eleS[N - 1]).toFixed(1)}`;
+  const area = `${line}L1000,100L0,100Z`;
+  $('profLine').setAttribute('d', line);
+  $('profArea').setAttribute('d', area);
+  $('profWalked').setAttribute('d', area);
+}
+
+// ---------- Progress ----------
+let progress = 0;           // meters
+let playing = false;
+let follow = true;
+const runnerPos = new THREE.Vector3();
+const clockStartUtc = new Date(T.date).getTime();
+
+function fmtDur(s) {
+  s = Math.max(0, Math.round(s));
+  return `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+function localHour(tSec) {
+  const d = new Date(clockStartUtc + tSec * 1000 + T.startUtcOffsetH * 3600000);
+  return d.getUTCHours() + d.getUTCMinutes() / 60;
+}
+
+function setProgress(d) {
+  progress = Math.min(Math.max(d, 0), totalDist);
+  const { i, f } = locate(progress);
+  if (routeWorld) {
+    const a = routeWorld[i], b = routeWorld[Math.min(i + 1, N - 1)];
+    runnerPos.lerpVectors(a, b, f);
+    runner.position.copy(runnerPos);
+    const ahead = routeWorld[Math.min(i + 3, N - 1)];
+    if (ahead.distanceTo(a) > .01) runner.rotation.y = Math.atan2(ahead.x - a.x, ahead.z - a.z);
+    const walkedIdx = i * 6;
+    ribbonWalked.geometry.setDrawRange(0, walkedIdx + (f > 0 ? 6 : 0));
+  }
+  const ele = lerpArr(eleS, i, f);
+  const tSec = raw[i][3] + ((raw[Math.min(i + 1, N - 1)][3]) - raw[i][3]) * f;
+  const back = locate(progress - 60), fwd = locate(progress + 60);
+  const span = lerpArr(dist, fwd.i, fwd.f) - lerpArr(dist, back.i, back.f);
+  const slope = span > 0 ? (lerpArr(eleS, fwd.i, fwd.f) - lerpArr(eleS, back.i, back.f)) / span * 100 : 0;
+
+  $('sDist').textContent = (progress / 1000).toFixed(1);
+  $('sAlt').textContent = Math.round(ele);
+  $('sSlope').textContent = `${slope > 0 ? '+' : ''}${Math.round(slope)}`;
+  $('sGain').textContent = Math.round(lerpArr(gain, i, f));
+  $('sTime').textContent = fmtDur(tSec);
+  const h = localHour(tSec);
+  $('sClock').textContent = `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor((h % 1) * 60)).padStart(2, '0')}`;
+  const x = profX(progress);
+  $('walkRect').setAttribute('width', x);
+  $('profCursor').setAttribute('x1', x); $('profCursor').setAttribute('x2', x);
+  if (!night) placeSun(h);
+}
+
+// ---------- Sun & night ----------
+let night = false, dayness = 1, dayTarget = 1;
+const sunDay = new THREE.Color(0xfff1d6), sunNight = new THREE.Color(0x8fa6d9);
+const hemiSkyDay = new THREE.Color(0xf4f1e0), hemiSkyNight = new THREE.Color(0x3b4a70);
+const hemiGrdDay = new THREE.Color(0x5d5a48), hemiGrdNight = new THREE.Color(0x10131c);
+function placeSun(hour) {
+  // Southern hemisphere: the sun crosses the northern sky (north = -z, east = +x)
+  const a = Math.min(Math.max((hour - 6) / 13, 0.05), 0.95) * Math.PI;
+  sun.position.set(Math.cos(a) * 260, 90 + Math.sin(a) * 230, -120);
+  sun.target.position.set(0, 0, 0);
+}
+function setDayness(v, instant) {
+  dayTarget = v; if (instant) dayness = v;
+}
+function applyDayness() {
+  dayness += (dayTarget - dayness) * .06;
+  sun.intensity = .35 + 2.05 * dayness;
+  sun.color.copy(sunNight).lerp(sunDay, dayness);
+  hemi.intensity = .35 + .75 * dayness;
+  hemi.color.copy(hemiSkyNight).lerp(hemiSkyDay, dayness);
+  hemi.groundColor.copy(hemiGrdNight).lerp(hemiGrdDay, dayness);
+  if (runner) runner.getObjectByName('lamp').intensity = (1 - dayness) * 40;
+}
+$('btnNight').addEventListener('click', () => {
+  night = !night;
+  $('btnNight').setAttribute('aria-pressed', night);
+  $('btnNight').textContent = night ? '☀ Día' : '☾ Noche';
+  document.body.classList.toggle('night', night);
+  setDayness(night ? 0 : 1);
+  if (night) sun.position.set(-180, 160, 120); else setProgress(progress);
+});
+
+// ---------- UI ----------
+const btnPlay = $('btnPlay');
+function setPlaying(v) {
+  playing = v;
+  if (playing && progress >= totalDist) setProgress(0);
+  btnPlay.textContent = playing ? '❚❚ Pausa' : (progress > 0 && progress < totalDist ? '▶ Continuar' : '▶ Empezar el recorrido');
+  if (playing && follow) zoomToRunner();
+}
+function zoomToRunner() {
+  // Keep the current azimuth, use an oblique ~40° view at a fixed distance
+  const dir = camera.position.clone().sub(controls.target);
+  const az = Math.atan2(dir.x, dir.z), el = 0.7, d0 = 95;
+  const to = runnerPos.clone().add(new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).multiplyScalar(d0));
+  camAnim = { from: camera.position.clone(), to, tFrom: controls.target.clone(), tTo: runnerPos.clone(), t: 0 };
+}
+btnPlay.addEventListener('click', () => setPlaying(!playing));
+$('btnFollow').addEventListener('click', () => {
+  follow = !follow; $('btnFollow').setAttribute('aria-pressed', follow);
+  if (follow) zoomToRunner();
+});
+$('btnReset').addEventListener('click', () => {
+  follow = false; $('btnFollow').setAttribute('aria-pressed', false); setOverview(false);
+});
+
+const prof = $('profile');
+let scrubbing = false;
+function scrub(e) {
+  const r = prof.getBoundingClientRect();
+  setProgress((e.clientX - r.left) / r.width * totalDist);
+  if (playing) setPlaying(false);
+}
+prof.addEventListener('pointerdown', e => { scrubbing = true; prof.setPointerCapture(e.pointerId); scrub(e); });
+prof.addEventListener('pointermove', e => { if (scrubbing) scrub(e); });
+prof.addEventListener('pointerup', () => { scrubbing = false; });
+addEventListener('keydown', e => { if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); setPlaying(!playing); } });
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ---------- Loop ----------
+const clock = new THREE.Clock();
+const proj = new THREE.Vector3();
+const prevRunner = new THREE.Vector3();
+function tick() {
+  const dt = Math.min(clock.getDelta(), .1);
+  if (routeWorld) {
+    if (playing) {
+      setProgress(progress + totalDist / TRIP_SECONDS * Number($('speed').value) * dt);
+      if (progress >= totalDist) setPlaying(false);
+    }
+    // camera transitions
+    if (camAnim) {
+      camAnim.t = Math.min(1, camAnim.t + dt / 1.4);
+      const k = camAnim.t * camAnim.t * (3 - 2 * camAnim.t);
+      camera.position.lerpVectors(camAnim.from, camAnim.to, k);
+      controls.target.lerpVectors(camAnim.tFrom, camAnim.tTo, k);
+      if (camAnim.t >= 1) camAnim = null;
+    } else if (follow && (playing || scrubbing)) {
+      // keep the user's orbit, translate it with the runner
+      const delta = runnerPos.clone().sub(controls.target).multiplyScalar(.08);
+      controls.target.add(delta); camera.position.add(delta);
+    }
+    prevRunner.copy(runnerPos);
+    const ring = runner.getObjectByName('ring');
+    const s = 1 + (Math.sin(clock.elapsedTime * 4) * .5 + .5) * .35;
+    ring.scale.set(s, s, s); ring.material.opacity = .9 - (s - 1) * 1.6;
+
+    // HTML labels
+    for (const L of labels) {
+      proj.copy(L.v).project(camera);
+      const vis = proj.z < 1 && Math.abs(proj.x) < 1.1 && Math.abs(proj.y) < 1.1;
+      L.el.style.opacity = vis ? 1 : 0;
+      if (vis) L.el.style.transform = `translate(${(proj.x * .5 + .5) * innerWidth}px, ${(-proj.y * .5 + .5) * innerHeight}px) translate(-50%, calc(-100% - 6px))`;
+    }
+  }
+  applyDayness();
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+tick();
+
+build().catch(err => {
+  console.error(err);
+  loaderText.innerHTML = 'No se pudo cargar el relieve.<br><small>Revisá la conexión o probá con Chrome/Firefox con aceleración por hardware.</small>';
+});
+</script>
+</body>
+</html>
