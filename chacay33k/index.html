@@ -130,6 +130,7 @@
     #profileWrap { height: 120px; }
     #profile { height: 84px; }
     #hint { display: none; }
+    body.sat #hint { display: block; font-size: 10px; }
   }
 </style>
 </head>
@@ -159,12 +160,13 @@
     <option value="4">4×</option>
   </select>
   <button id="btnFollow" class="toggle" aria-pressed="true">Seguir corredor</button>
+  <button id="btnSat" class="toggle" aria-pressed="false">🛰 Satélite</button>
   <button id="btnNight" class="toggle" aria-pressed="false">☾ Noche</button>
   <button id="btnReset">Vista general</button>
 </div>
 
 <div id="hint">Arrastrar: rotar · Rueda: zoom · Shift/clic derecho + arrastrar: mover<br>
-Relieve: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">Terrain Tiles (AWS / Mapzen)</a></div>
+Relieve: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">Terrain Tiles (AWS / Mapzen)</a><span id="satCredit" hidden> · Imagen: Esri, Maxar, Earthstar Geographics</span></div>
 
 <section id="profileWrap" class="panel">
   <div class="row"><span>Perfil de altimetría</span><span id="profRange"></span></div>
@@ -371,6 +373,7 @@ const routeCenter = new THREE.Vector3();
 // ---------- Build world ----------
 let groundH = null;  // world height sampler (x, z) -> y, consistent with the mesh triangulation
 let runner, ribbonAhead, ribbonWalked, routeWorld, labels = [];
+let terrain, lowPolyMat, vegetation = [];
 
 async function build() {
   const elev = await loadElevation();
@@ -435,7 +438,7 @@ async function build() {
 
   // Terrain mesh (flat-shaded, non indexed)
   const triCount = (NX - 1) * (NZ - 1) * 2;
-  const pos = new Float32Array(triCount * 9), col = new Float32Array(triCount * 9);
+  const pos = new Float32Array(triCount * 9), col = new Float32Array(triCount * 9), uv = new Float32Array(triCount * 6);
   let p = 0;
   const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3(), e1 = new THREE.Vector3(), e2 = new THREE.Vector3();
   const pushTri = (ax, ay, az, bx, by, bz, qx, qy, qz, i, j) => {
@@ -446,7 +449,9 @@ async function build() {
     const c = faceColor(yAvg, ny, concav, i * 7.31 + j * 3.17 + p);
     for (const v of [vA, vB, vC]) {
       pos[p] = v.x; pos[p + 1] = v.y; pos[p + 2] = v.z;
-      col[p] = c.r; col[p + 1] = c.g; col[p + 2] = c.b; p += 3;
+      col[p] = c.r; col[p + 1] = c.g; col[p + 2] = c.b;
+      const q = p / 3 * 2; uv[q] = (v.x - X0) / sx; uv[q + 1] = 1 - (v.z - Z0) / sz;  // v=1 at maxLat
+      p += 3;
     }
   };
   for (let j = 0; j < NZ - 1; j++) for (let i = 0; i < NX - 1; i++) {
@@ -458,8 +463,10 @@ async function build() {
   const tGeo = new THREE.BufferGeometry();
   tGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   tGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  tGeo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   tGeo.computeVertexNormals();
-  const terrain = new THREE.Mesh(tGeo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  lowPolyMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  terrain = new THREE.Mesh(tGeo, lowPolyMat);
   terrain.receiveShadow = true; terrain.castShadow = true;
   scene.add(terrain);
 
@@ -555,6 +562,7 @@ async function build() {
     m4.compose(pv.set(x, y + .1, z), q, sv.set(s * 1.3, s * .7, s)); rockMesh.setMatrixAt(k, m4);
   });
   scene.add(rockMesh);
+  vegetation = [crowns, trunks, rockMesh];
 
   // Route ribbon
   const W = .55, LIFT = .22;
@@ -718,6 +726,54 @@ $('btnNight').addEventListener('click', () => {
   document.body.classList.toggle('night', night);
   setDayness(night ? 0 : 1);
   if (night) sun.position.set(-180, 160, 120); else setProgress(progress);
+});
+
+// ---------- Satellite imagery (Esri World Imagery) ----------
+let satMat = null, satOn = false, satLoading = false;
+async function loadSatellite() {
+  // Pick the highest zoom that keeps the mosaic within ~48 tiles
+  let z = 17, x0, y0, x1, y1;
+  for (; z > 10; z--) {
+    const a = lonLatToPixel(minLon, maxLat, z), b = lonLatToPixel(maxLon, minLat, z);
+    x0 = Math.floor(a[0] / 256); y0 = Math.floor(a[1] / 256); x1 = Math.floor(b[0] / 256); y1 = Math.floor(b[1] / 256);
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) <= 48) break;
+  }
+  const mosaic = document.createElement('canvas');
+  mosaic.width = (x1 - x0 + 1) * 256; mosaic.height = (y1 - y0 + 1) * 256;
+  const mctx = mosaic.getContext('2d');
+  const jobs = [];
+  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+    jobs.push(loadImage(`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${ty}/${tx}`)
+      .then(img => mctx.drawImage(img, (tx - x0) * 256, (ty - y0) * 256)).catch(() => {}));
+  }
+  await Promise.all(jobs);
+  // Crop to the exact block bounds
+  const a = lonLatToPixel(minLon, maxLat, z), b = lonLatToPixel(maxLon, minLat, z);
+  const sxp = a[0] - x0 * 256, syp = a[1] - y0 * 256, sw = b[0] - a[0], sh = b[1] - a[1];
+  const out = document.createElement('canvas');
+  out.width = Math.min(4096, Math.round(sw)); out.height = Math.min(4096, Math.round(sh));
+  out.getContext('2d').drawImage(mosaic, sxp, syp, sw, sh, 0, 0, out.width, out.height);
+  const tex = new THREE.CanvasTexture(out);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return new THREE.MeshLambertMaterial({ map: tex });
+}
+const btnSat = $('btnSat');
+btnSat.addEventListener('click', async () => {
+  if (satLoading || !terrain) return;
+  if (!satMat) {
+    satLoading = true; btnSat.textContent = '🛰 Cargando…';
+    try { satMat = await loadSatellite(); }
+    catch (e) { console.error(e); btnSat.textContent = '🛰 Satélite'; satLoading = false; return; }
+    satLoading = false;
+  }
+  satOn = !satOn;
+  terrain.material = satOn ? satMat : lowPolyMat;
+  vegetation.forEach(m => { m.visible = !satOn; });
+  btnSat.setAttribute('aria-pressed', satOn);
+  btnSat.textContent = satOn ? '▲ Maqueta' : '🛰 Satélite';
+  $('satCredit').hidden = !satOn;
+  document.body.classList.toggle('sat', satOn);
 });
 
 // ---------- UI ----------
